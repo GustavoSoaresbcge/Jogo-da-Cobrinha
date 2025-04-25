@@ -1,10 +1,12 @@
 import pygame
+import time
+import math
 from random import randint
-# Criação do banco de dados com as tabelas
 import sqlite3
 
 conexao = sqlite3.connect('ranking.db')
 cursor = conexao.cursor()
+# Criação do banco de dados com as tabelas
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS ranking(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,7 +19,8 @@ pygame.init()
 
 # Cores gerais
 preto = (0, 0, 0)
-verde = (0, 255, 0)
+verde_cobra = (0, 255, 0)
+verde_confirm = (0, 200, 0)
 vermelho = (255, 0, 0)
 dourado = (255, 215, 0)
 branco = (255, 255, 255)
@@ -35,15 +38,21 @@ fonte_pequena = pygame.font.SysFont('Arial', 20)
 tela = pygame.display.set_mode((largura, altura))
 pygame.display.set_caption('Jogo da Cobrinha')
 
+# Checkbox
+checkbox_ret1 = pygame.Rect(200, 250, 40, 40)
+checkbox_ret2 = pygame.Rect(200, 350, 40, 40)
+
 # Relógio
 clock = pygame.time.Clock()
 speed = 15
 
-
 # Funções
 def tela_inicial(tela, largura, altura, fonte, cursor):
     nickname = ""
+    checkbox_marcado1 = False
+    checkbox_marcado2 = False
     digitando = True
+    checking = True
 
     while digitando:
         tela.fill(preto)
@@ -100,7 +109,42 @@ def tela_inicial(tela, largura, altura, fonte, cursor):
                 elif len(nickname) < 20:
                     nickname += event.unicode
 
-    return nickname
+    while checking:
+        tela.fill(preto)
+
+        # Desenha checkbox (preenchido se marcado)
+        pygame.draw.rect(tela, branco, checkbox_ret1, 2)
+        pygame.draw.rect(tela, branco, checkbox_ret2, 2)
+
+        # Preenche o interior de verde se marcado
+        if checkbox_marcado1:
+            pygame.draw.rect(tela, verde_confirm, checkbox_ret1.inflate(-6, -6))
+            checking = False
+
+        elif checkbox_marcado2:
+            pygame.draw.rect(tela, verde_confirm, checkbox_ret2.inflate(-6, -6))
+            checking = False
+
+        # Textos
+        mensagem(f'Modos de Jogo', branco, largura // 2 - 190, altura // 2 - 110)
+        mensagem('Normal', branco, checkbox_ret1.right + 10, checkbox_ret1.y)
+        mensagem('Com temporizador', branco, checkbox_ret2.right + 10, checkbox_ret2.y)
+        mensagem_intermitente('Clique na opção que desejar', largura // 2 - 200, altura // 2 + 100)
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif evento.type == pygame.MOUSEBUTTONDOWN:
+                if checkbox_ret1.collidepoint(evento.pos):
+                    checkbox_marcado1 = not checkbox_marcado1
+
+                elif checkbox_ret2.collidepoint(evento.pos):
+                    checkbox_marcado2 = not checkbox_marcado2
+
+        pygame.display.flip()
+
+    return nickname, checkbox_marcado2
 
 
 def adicionar(name, point):
@@ -138,7 +182,7 @@ def mensagem(msg, cor, x, y, pequena=False):
 
 def desenha_cobra(lista):
     for BLOCO in lista:
-        pygame.draw.rect(tela, verde, [BLOCO[0], BLOCO[1], bloco, bloco])
+        pygame.draw.rect(tela, verde_cobra, [BLOCO[0], BLOCO[1], bloco, bloco])
 
 
 def gerar_maca():
@@ -166,7 +210,9 @@ def main():
     recorde = 0
     jogando = True
     # Iniciar com a tela inicial
-    nickname = tela_inicial(tela, largura, altura, fonte, cursor)
+    inicio = tela_inicial(tela, largura, altura, fonte, cursor)
+    nickname = inicio[0]
+    modo_ctempo = inicio[1]
 
     while jogando:
         game_over = False
@@ -180,9 +226,17 @@ def main():
         cobra = []
         tamanho = 1
         pontuacao = 0
+        tempo_limite = 0
+        inicio_tempo_visivel = None
+        tempo_restante_visivel = 0
 
         maca = gerar_maca()
         type_apple = cor_apple()
+
+        if modo_ctempo:
+            # Cronômetros usados apenas no modo com temporizador
+            tempo_limite = 15
+            inicio_tempo_visivel = time.time()
 
         while not game_over:
             for event in pygame.event.get():
@@ -195,18 +249,26 @@ def main():
                             x_mudar = -bloco
                             y_mudar = 0
                             start = True
+                            if modo_ctempo:
+                                inicio_tempo_visivel = time.time()
                         elif event.key == pygame.K_RIGHT:
                             x_mudar = bloco
                             y_mudar = 0
                             start = True
+                            if modo_ctempo:
+                                inicio_tempo_visivel = time.time()
                         elif event.key == pygame.K_UP:
                             y_mudar = -bloco
                             x_mudar = 0
                             start = True
+                            if modo_ctempo:
+                                inicio_tempo_visivel = time.time()
                         elif event.key == pygame.K_DOWN:
                             y_mudar = bloco
                             x_mudar = 0
                             start = True
+                            if modo_ctempo:
+                                inicio_tempo_visivel = time.time()
                     else:
                         if event.key == pygame.K_LEFT and x_mudar == 0:
                             x_mudar = -bloco
@@ -228,10 +290,20 @@ def main():
                 else:
                     cor_maca = vermelho
                 pygame.draw.rect(tela, cor_maca, [maca[0], maca[1], bloco, bloco])
-                pygame.draw.rect(tela, verde, [x, y, bloco, bloco])
+                pygame.draw.rect(tela, verde_cobra, [x, y, bloco, bloco])
                 mensagem_intermitente('Ande para começar')
                 pygame.display.update()
                 continue
+
+            if modo_ctempo:
+                # Checagem do tempo visível
+                tempo_passado_visivel = time.time() - inicio_tempo_visivel
+                tempo_restante_visivel = tempo_limite - tempo_passado_visivel
+
+                # Checagem se o tempo acabou
+                if tempo_restante_visivel <= 0:
+                    game_over = True
+                    continue
 
             x += x_mudar
             y += y_mudar
@@ -260,6 +332,13 @@ def main():
                 game_over = True
 
             desenha_cobra(cobra)
+
+            # Cronômetro visível na tela
+            if modo_ctempo:
+                tempo_restante_int = math.ceil(tempo_restante_visivel)
+                mensagem(f'Tempo: {tempo_restante_int}s', branco, 10, 5, pequena=True)
+
+            mensagem(f'Pontos: {pontuacao}s', branco, largura - 150, 5, pequena=True)
             pygame.display.update()
 
             # Pegou maçã
@@ -267,9 +346,21 @@ def main():
                 if type_apple == 'dourada':
                     pontuacao += 2
                     tamanho += 2
+
+                    if modo_ctempo:
+                        # Cronômetro invisível
+                        inicio_tempo_oculto = time.time()
+                        tempo_oculto_restante = 15 - (time.time() - inicio_tempo_oculto)
+                        tempo_oculto_restante_int = math.ceil(tempo_oculto_restante)
+                        tempo_limite = tempo_restante_visivel + 7 + tempo_oculto_restante_int
                 else:
                     pontuacao += 1
                     tamanho += 1
+                    if modo_ctempo:
+                        tempo_limite = tempo_restante_visivel + 5
+
+                if modo_ctempo:
+                    inicio_tempo_visivel = time.time()
 
                 maca = gerar_maca()
                 type_apple = cor_apple()
